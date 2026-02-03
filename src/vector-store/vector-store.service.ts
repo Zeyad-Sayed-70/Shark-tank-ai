@@ -31,10 +31,98 @@ export class VectorStoreService implements OnModuleInit {
             distance: 'Cosine',
           },
         });
+      } else {
+        this.logger.log(`Collection ${this.COLLECTION_NAME} already exists`);
       }
+
+      // Always ensure indexes exist (safe to call even if they already exist)
+      await this.ensureIndexes();
     } catch (error) {
       this.logger.error('Failed to initialize Qdrant collection', error);
     }
+  }
+
+  private async ensureIndexes() {
+    try {
+      this.logger.log('Ensuring indexes for filterable fields...');
+
+      // String fields (keyword index)
+      const stringFields = [
+        'investor_name',
+        'industry',
+        'company',
+        'entrepreneur',
+      ];
+
+      for (const field of stringFields) {
+        try {
+          await this.client.createPayloadIndex(this.COLLECTION_NAME, {
+            field_name: field,
+            field_schema: 'keyword',
+          });
+          this.logger.log(`Created index for ${field}`);
+        } catch (error) {
+          // Index might already exist, that's okay
+          if (!error.message?.includes('already exists')) {
+            this.logger.warn(`Could not create index for ${field}:`, error.message);
+          }
+        }
+      }
+
+      // Boolean field
+      try {
+        await this.client.createPayloadIndex(this.COLLECTION_NAME, {
+          field_name: 'deal_made',
+          field_schema: 'bool',
+        });
+        this.logger.log('Created index for deal_made');
+      } catch (error) {
+        if (!error.message?.includes('already exists')) {
+          this.logger.warn('Could not create index for deal_made:', error.message);
+        }
+      }
+
+      // Integer fields
+      const integerFields = ['season', 'episode'];
+      for (const field of integerFields) {
+        try {
+          await this.client.createPayloadIndex(this.COLLECTION_NAME, {
+            field_name: field,
+            field_schema: 'integer',
+          });
+          this.logger.log(`Created index for ${field}`);
+        } catch (error) {
+          if (!error.message?.includes('already exists')) {
+            this.logger.warn(`Could not create index for ${field}:`, error.message);
+          }
+        }
+      }
+
+      // Float/Number fields
+      const floatFields = ['valuation', 'ask_amount', 'equity_offered'];
+      for (const field of floatFields) {
+        try {
+          await this.client.createPayloadIndex(this.COLLECTION_NAME, {
+            field_name: field,
+            field_schema: 'float',
+          });
+          this.logger.log(`Created index for ${field}`);
+        } catch (error) {
+          if (!error.message?.includes('already exists')) {
+            this.logger.warn(`Could not create index for ${field}:`, error.message);
+          }
+        }
+      }
+
+      this.logger.log('All indexes ensured successfully');
+    } catch (error) {
+      this.logger.error('Failed to ensure indexes', error);
+    }
+  }
+
+  // Public method to manually trigger index setup
+  async setupIndexes() {
+    await this.ensureIndexes();
   }
 
   async savePoint(

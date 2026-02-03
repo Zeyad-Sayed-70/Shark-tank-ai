@@ -88,21 +88,23 @@ export class RetrievalService {
 
   async search(intent: any) {
     const { type, filters, search_term } = intent;
-    this.logger.log(`Executing search: ${type} - "${search_term}"`, filters);
+    this.logger.log(`Executing search: ${type} - "${search_term}"`);
 
     // Build Qdrant Filter
     let qdrantFilter: any = undefined;
     if (filters && Object.keys(filters).length > 0) {
       const must: any[] = [];
       for (const [key, value] of Object.entries(filters)) {
-        // Skip empty strings and zero values (indicating no filter)
-        if (value === '' || value === 0 || value === 'any') {
+        // Skip null, undefined, empty strings, and zero values
+        if (value === null || value === undefined || value === '' || value === 0 || value === 'any') {
           continue;
         }
 
         if (key === 'deal_made') {
-          // Convert string "true"/"false" to boolean
-          if (value === 'true' || value === 'false') {
+          // Handle boolean deal_made
+          if (typeof value === 'boolean') {
+            must.push({ key: key, match: { value: value } });
+          } else if (value === 'true' || value === 'false') {
             must.push({ key: key, match: { value: value === 'true' } });
           }
         } else if (key.endsWith('_gt')) {
@@ -127,24 +129,17 @@ export class RetrievalService {
       }
     }
 
+    this.logger.log(`Qdrant filter:`, JSON.stringify(qdrantFilter, null, 2));
+
     let results: any[] = [];
 
     // Search Logic
-    // VectorStoreService.search currently abstracts client.search, but for FACTUAL we might want scroll.
-    // However, for simplicity and since vectors are mocked, we can use search() for all,
-    // relying on the filter. If FACTUAL, search_term might be irrelevant, but we can still pass it.
-
-    // Note: In a real app, if FACTUAL, we might bypass getEmbeddings and just use scroll.
-    // But VectorStoreService.search enforces vector generation.
-    // Let's use search for everything for now as it handles filters.
-
     results = await this.vectorStoreService.search(
       search_term || '',
       qdrantFilter,
     );
 
     // Deduplication
-    // Group by video_url or parent_summary unique hash/text
     const uniquePitches = new Map<string, any>();
 
     for (const res of results) {

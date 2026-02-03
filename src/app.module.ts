@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { BullModule } from '@nestjs/bull';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import configuration from './config/configuration';
@@ -8,6 +9,7 @@ import { RetrievalModule } from './retrieval/retrieval.module';
 import { YoutubeModule } from './youtube/youtube.module';
 import { AiModule } from './ai/ai.module';
 import { VectorStoreModule } from './vector-store/vector-store.module';
+import { AgentModule } from './agent/agent.module';
 
 @Module({
   imports: [
@@ -15,11 +17,19 @@ import { VectorStoreModule } from './vector-store/vector-store.module';
       load: [configuration],
       isGlobal: true,
     }),
+    BullModule.forRoot({
+      redis: {
+        host: process.env.REDIS_HOST || 'localhost',
+        port: parseInt(process.env.REDIS_PORT || '6379', 10),
+        password: process.env.REDIS_PASSWORD,
+      },
+    }),
     YoutubeModule,
     AiModule,
     VectorStoreModule,
     DataIngestionModule,
     RetrievalModule,
+    AgentModule,
   ],
   controllers: [AppController],
   providers: [AppService],

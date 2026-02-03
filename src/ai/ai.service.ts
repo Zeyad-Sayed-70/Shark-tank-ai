@@ -24,13 +24,12 @@ export class AiService {
     // Only request JSON response when we have a schema
     const requestJson = !!jsonSchema;
 
-    const payload = {
+    const payload: any = {
       prompt,
       youtube_url: youtubeUrl,
       stream: false,
-      model: 'gemini-3-flash-preview',
+      model: youtubeUrl ? 'gemini-3-pro-preview' :'gemini-3-flash-preview',
       thinkingMode: true,
-      mediaResolution: 'HIGH',
       structuredOutputs: {
         enabled: requestJson,
         schema: jsonSchema || undefined,
@@ -38,9 +37,11 @@ export class AiService {
       codeExecution: false,
       googleSearch: false,
       urlContext: !!youtubeUrl,
-      temperature: 0.7,
+      // temperature: 0.7,
       responseWithJson: true,
     };
+
+    if (youtubeUrl) payload.mediaResolution = 'HIGH';
 
     try {
       const response = await lastValueFrom(
