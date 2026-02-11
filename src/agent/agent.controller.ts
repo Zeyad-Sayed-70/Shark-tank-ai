@@ -226,6 +226,7 @@ export class AgentController {
             success: true,
             response: jobInfo.result?.response,
             sessionId: jobInfo.result?.sessionId,
+            entities: jobInfo.result?.entities,
             processingTime: jobInfo.result?.processingTime,
             timestamp: new Date().toISOString(),
           };

@@ -152,13 +152,13 @@ export class VectorStoreService implements OnModuleInit {
     return pointId;
   }
 
-  async search(queryText: string, filter?: any) {
+  async search(queryText: string, filter?: any, limit: number = 5) {
     const vector = this.getEmbeddings(queryText);
 
     // Basic search payload
     const searchParams: any = {
       vector,
-      limit: 5,
+      limit,
       with_payload: true,
     };
 

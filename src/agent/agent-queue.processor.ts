@@ -21,6 +21,7 @@ export interface AgentJobData {
 export interface AgentJobResult {
   response: string;
   sessionId: string;
+  entities?: any;
   toolsUsed?: string[];
   processingTime: number;
   timestamp: string;
@@ -60,8 +61,8 @@ export class AgentQueueProcessor {
 
       await job.progress(30);
 
-      // Get agent response
-      const response = await this.agent.chat(
+      // Use AgentService to get response with entities
+      const result = await this.agentService.chat(
         job.data.message,
         conversationHistory,
       );
@@ -69,41 +70,11 @@ export class AgentQueueProcessor {
       await job.progress(90);
 
       const processingTime = Date.now() - startTime;
-      const sessionId = job.data.sessionId || `session_${Date.now()}`;
 
-      // Update session in AgentService if sessionId exists
-      if (job.data.sessionId) {
-        try {
-          // Get or create session
-          const session = this.agentService.getSession(job.data.sessionId) || 
-            this.agentService['getOrCreateSession'](job.data.sessionId);
-
-          // Add user message if not already in history
-          if (!job.data.conversationHistory || job.data.conversationHistory.length === 0) {
-            session.messages.push({
-              role: 'user',
-              content: job.data.message,
-              timestamp: new Date(startTime),
-            });
-          }
-
-          // Add assistant response
-          session.messages.push({
-            role: 'assistant',
-            content: response,
-            timestamp: new Date(),
-          });
-
-          // Update session activity
-          session.lastActivity = new Date();
-        } catch (error) {
-          this.logger.warn(`Failed to update session ${job.data.sessionId}: ${error}`);
-        }
-      }
-
-      const result: AgentJobResult = {
-        response,
-        sessionId,
+      const jobResult: AgentJobResult = {
+        response: result.response,
+        sessionId: job.data.sessionId || `session_${Date.now()}`,
+        entities: result.entities,
         processingTime,
         timestamp: new Date().toISOString(),
       };
@@ -114,7 +85,7 @@ export class AgentQueueProcessor {
         `Job ${job.id} completed in ${processingTime}ms`,
       );
 
-      return result;
+      return jobResult;
     } catch (error) {
       this.logger.error(
         `Job ${job.id} failed: ${error instanceof Error ? error.message : 'Unknown error'}`,

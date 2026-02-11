@@ -7,11 +7,18 @@ import { AgentController } from './agent.controller';
 import { AgentQueueService } from './agent-queue.service';
 import { AgentQueueController } from './agent-queue.controller';
 import { AgentQueueProcessor } from './agent-queue.processor';
+import { EntityExtractionService } from './entity-extraction.service';
+import { ConversationService } from './conversation.service';
+import { ConversationController } from './conversation.controller';
+import { DealsModule } from '../deals/deals.module';
+import { SharksModule } from '../sharks/sharks.module';
 
 @Module({
   imports: [
     HttpModule,
     ConfigModule,
+    DealsModule,
+    SharksModule,
     BullModule.registerQueueAsync({
       name: 'agent-queue',
       imports: [ConfigModule],
@@ -48,8 +55,8 @@ import { AgentQueueProcessor } from './agent-queue.processor';
       inject: [ConfigService],
     }),
   ],
-  controllers: [AgentController, AgentQueueController],
-  providers: [AgentService, AgentQueueService, AgentQueueProcessor],
-  exports: [AgentService, AgentQueueService],
+  controllers: [AgentController, AgentQueueController, ConversationController],
+  providers: [AgentService, AgentQueueService, AgentQueueProcessor, EntityExtractionService, ConversationService],
+  exports: [AgentService, AgentQueueService, ConversationService],
 })
 export class AgentModule {}

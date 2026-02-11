@@ -10,6 +10,8 @@ import { YoutubeModule } from './youtube/youtube.module';
 import { AiModule } from './ai/ai.module';
 import { VectorStoreModule } from './vector-store/vector-store.module';
 import { AgentModule } from './agent/agent.module';
+import { DealsModule } from './deals/deals.module';
+import { SharksModule } from './sharks/sharks.module';
 
 @Module({
   imports: [
@@ -30,6 +32,8 @@ import { AgentModule } from './agent/agent.module';
     DataIngestionModule,
     RetrievalModule,
     AgentModule,
+    DealsModule,
+    SharksModule,
   ],
   controllers: [AppController],
   providers: [AppService],

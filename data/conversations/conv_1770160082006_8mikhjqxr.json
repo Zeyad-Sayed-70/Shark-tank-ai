@@ -1,0 +1,31 @@
+{
+  "id": "conv_1770160082006_8mikhjqxr",
+  "title": "give me some deals",
+  "messages": [
+    {
+      "role": "user",
+      "content": "give me some deals",
+      "timestamp": "2026-02-03T23:08:02.017Z"
+    },
+    {
+      "role": "assistant",
+      "content": "I apologize, but I could not generate a response. Please try again.",
+      "timestamp": "2026-02-03T23:08:51.864Z",
+      "metadata": {
+        "entities": {
+          "companies": [],
+          "sharks": [],
+          "deals": []
+        },
+        "processingTime": 49845
+      }
+    }
+  ],
+  "createdAt": "2026-02-03T23:08:02.006Z",
+  "updatedAt": "2026-02-03T23:08:51.864Z",
+  "metadata": {
+    "totalMessages": 2,
+    "companiesMentioned": [],
+    "sharksMentioned": []
+  }
+}

@@ -3,6 +3,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { SharkTankAgent } from './shark-tank-agent';
 import { BaseMessage, HumanMessage, AIMessage } from '@langchain/core/messages';
+import { EntityExtractionService, ExtractedEntities } from './entity-extraction.service';
 
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -15,6 +16,15 @@ export interface ConversationSession {
   messages: ChatMessage[];
   createdAt: Date;
   lastActivity: Date;
+  metadata?: {
+    totalMessages: number;
+    companiesMentioned: string[];
+    sharksMentioned: string[];
+    lastDealDiscussed?: {
+      company: string;
+      timestamp: Date;
+    };
+  };
 }
 
 @Injectable()
@@ -27,6 +37,7 @@ export class AgentService implements OnModuleInit {
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
+    private readonly entityExtractionService: EntityExtractionService,
   ) {}
 
   onModuleInit() {
@@ -62,8 +73,35 @@ export class AgentService implements OnModuleInit {
 
   async chat(
     message: string,
+    conversationHistory: BaseMessage[] = [],
+  ): Promise<{ response: string; entities?: ExtractedEntities }> {
+    try {
+      // Get agent response with conversation history
+      const response = await this.agent.chat(message, conversationHistory);
+
+      // Extract entities from response
+      let entities: ExtractedEntities | undefined;
+      try {
+        entities = await this.entityExtractionService.extractEntities(response);
+      } catch (error) {
+        this.logger.warn('Failed to extract entities:', error);
+      }
+
+      return {
+        response,
+        entities,
+      };
+    } catch (error) {
+      this.logger.error('Error in chat:', error);
+      throw error;
+    }
+  }
+
+  // Legacy method for backward compatibility with sessions
+  async chatWithSession(
+    message: string,
     sessionId?: string,
-  ): Promise<{ response: string; sessionId: string }> {
+  ): Promise<{ response: string; sessionId: string; entities?: ExtractedEntities }> {
     try {
       // Get or create session
       const session = this.getOrCreateSession(sessionId);
@@ -81,21 +119,64 @@ export class AgentService implements OnModuleInit {
       );
 
       // Get agent response
-      const response = await this.agent.chat(message, conversationHistory);
+      const result = await this.chat(message, conversationHistory);
+
+      // Update session metadata
+      if (result.entities) {
+        if (result.entities.companies.length > 0) {
+          if (!session.metadata) {
+            session.metadata = {
+              totalMessages: 0,
+              companiesMentioned: [],
+              sharksMentioned: [],
+            };
+          }
+          session.metadata.companiesMentioned = [
+            ...new Set([...session.metadata.companiesMentioned, ...result.entities.companies]),
+          ];
+          
+          if (result.entities.deals.length > 0) {
+            session.metadata.lastDealDiscussed = {
+              company: result.entities.deals[0].company,
+              timestamp: new Date(),
+            };
+          }
+        }
+        
+        if (result.entities.sharks.some(s => s.mentioned)) {
+          if (!session.metadata) {
+            session.metadata = {
+              totalMessages: 0,
+              companiesMentioned: [],
+              sharksMentioned: [],
+            };
+          }
+          const mentionedSharkNames = result.entities.sharks
+            .filter(s => s.mentioned)
+            .map(s => s.name);
+          session.metadata.sharksMentioned = [
+            ...new Set([...session.metadata.sharksMentioned, ...mentionedSharkNames]),
+          ];
+        }
+      }
 
       // Add assistant response to session
       session.messages.push({
         role: 'assistant',
-        content: response,
+        content: result.response,
         timestamp: new Date(),
       });
 
-      // Update session activity
+      // Update session activity and metadata
       session.lastActivity = new Date();
+      if (session.metadata) {
+        session.metadata.totalMessages = session.messages.length;
+      }
 
       return {
-        response,
+        response: result.response,
         sessionId: session.sessionId,
+        entities: result.entities,
       };
     } catch (error) {
       this.logger.error('Error in chat:', error);
@@ -150,6 +231,11 @@ export class AgentService implements OnModuleInit {
       messages: [],
       createdAt: new Date(),
       lastActivity: new Date(),
+      metadata: {
+        totalMessages: 0,
+        companiesMentioned: [],
+        sharksMentioned: [],
+      },
     };
 
     this.sessions.set(newSessionId, newSession);
