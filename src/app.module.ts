@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { BullModule } from '@nestjs/bull';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import configuration from './config/configuration';
@@ -12,6 +13,7 @@ import { VectorStoreModule } from './vector-store/vector-store.module';
 import { AgentModule } from './agent/agent.module';
 import { DealsModule } from './deals/deals.module';
 import { SharksModule } from './sharks/sharks.module';
+import { TaskEmbedderModule } from './task-embedder/task-embedder.module';
 
 @Module({
   imports: [
@@ -26,6 +28,7 @@ import { SharksModule } from './sharks/sharks.module';
         password: process.env.REDIS_PASSWORD,
       },
     }),
+    ScheduleModule.forRoot(),
     YoutubeModule,
     AiModule,
     VectorStoreModule,
@@ -34,6 +37,7 @@ import { SharksModule } from './sharks/sharks.module';
     AgentModule,
     DealsModule,
     SharksModule,
+    TaskEmbedderModule,
   ],
   controllers: [AppController],
   providers: [AppService],

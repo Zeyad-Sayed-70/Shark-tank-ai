@@ -12,78 +12,90 @@ export class RetrievalService {
   ) {}
 
   async classifyIntent(userQuery: string): Promise<any> {
-    const prompt = `
-      Analyze the user's query for a Shark Tank search engine.
-      Classify the intent and extract filters.
-      
-      Query: "${userQuery}"
+    const prompt = `Analyze the user's query for a Shark Tank search engine and respond with ONLY valid JSON.
 
-      Types:
-      - FACTUAL: The user is looking for specific structured data (e.g., "companies formatted by Kevin O'Leary", "deals with > 1M valuation").
-      - SEMANTIC: The user is looking for concepts, arguments, or similar pitches (e.g., "pitches about food that failed", "arguments about royalty deals").
-      - HYBRID: Both.
+Query: "${userQuery}"
 
-      Extract filters for: company, entrepreneur, season (int), episode (int), deal_made (bool), investor_name, industry, ask_amount (number), valuation (number), equity_offered (number).
-      For numeric filters, imply equality or range if context suggests, but for now just extract the value or null.
-      
-      Output Schema:
-      {
-        "type": "FACTUAL" | "SEMANTIC" | "HYBRID",
-        "filters": { key: value, ... },
-        "search_term": "extracted core concept for vector search"
-      }
-    `;
+Classify the intent type:
+- FACTUAL: Looking for specific structured data (e.g., "companies by Kevin O'Leary", "deals with > 1M valuation")
+- SEMANTIC: Looking for concepts, arguments, or similar pitches (e.g., "pitches about food that failed", "arguments about royalty deals")
+- HYBRID: Both factual and semantic
 
-    const schema = {
-      type: 'object',
-      properties: {
-        type: {
-          type: 'string',
-          enum: ['FACTUAL', 'SEMANTIC', 'HYBRID'],
-          description: 'The type of search query',
+Extract filters:
+- investor_name: Name of the investor (e.g., "Mark Cuban", "Kevin O'Leary") or empty string
+- industry: Industry category or empty string
+- deal_made: "true", "false", or "any"
+- valuation_gt: Minimum valuation in dollars or 0
+- valuation_lt: Maximum valuation in dollars or 0
+
+Generate a search_term: Core concept or keywords for semantic search
+
+Respond with ONLY this JSON structure (no markdown, no explanation):
+{
+  "type": "FACTUAL" | "SEMANTIC" | "HYBRID",
+  "filters": {
+    "investor_name": "string",
+    "industry": "string",
+    "deal_made": "true" | "false" | "any",
+    "valuation_gt": number,
+    "valuation_lt": number
+  },
+  "search_term": "string"
+}`;
+
+    const instructions = 'You are a query analyzer. Extract structured data from user queries and respond with valid JSON only.';
+
+    try {
+      const response = await this.aiService.generateMistralResponse(
+        prompt,
+        instructions,
+        [],
+        {
+          model: 'mistral-large-latest',
+          temperature: 0.3,
+          maxTokens: 1000,
         },
-        filters: {
-          type: 'object',
-          properties: {
-            investor_name: {
-              type: 'string',
-              description: 'Name of the investor (e.g., Mark Cuban, Kevin O\'Leary), or empty string if not applicable',
-            },
-            industry: {
-              type: 'string',
-              description: 'Industry category of the business, or empty string if not applicable',
-            },
-            deal_made: {
-              type: 'string',
-              enum: ['true', 'false', 'any'],
-              description: 'Whether a deal was made: "true", "false", or "any" if not filtering by this',
-            },
-            valuation_gt: {
-              type: 'number',
-              description: 'Minimum valuation amount in dollars, or 0 if not filtering',
-            },
-            valuation_lt: {
-              type: 'number',
-              description: 'Maximum valuation amount in dollars, or 0 if not filtering',
-            },
+      );
+
+      // Parse the JSON response
+      let parsed;
+      try {
+        // Try to extract JSON if wrapped in markdown code blocks
+        const jsonMatch = response.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/);
+        const jsonStr = jsonMatch ? jsonMatch[1] : response;
+        parsed = JSON.parse(jsonStr.trim());
+      } catch (parseError) {
+        this.logger.error('Failed to parse Mistral response as JSON:', response);
+        // Fallback to default structure
+        parsed = {
+          type: 'SEMANTIC',
+          filters: {
+            investor_name: '',
+            industry: '',
+            deal_made: 'any',
+            valuation_gt: 0,
+            valuation_lt: 0,
           },
-          required: [
-            'investor_name',
-            'industry',
-            'deal_made',
-            'valuation_gt',
-            'valuation_lt',
-          ],
-        },
-        search_term: {
-          type: 'string',
-          description: 'Core concept or keywords for semantic search',
-        },
-      },
-      required: ['type', 'filters', 'search_term'],
-    };
+          search_term: userQuery,
+        };
+      }
 
-    return await this.aiService.generateResponse(prompt, schema);
+      return parsed;
+    } catch (error) {
+      this.logger.error('Intent classification failed:', error.message);
+      // Return default structure on error
+      return {
+        type: 'SEMANTIC',
+        filters: {
+          investor_name: '',
+          industry: '',
+          deal_made: 'any',
+          valuation_gt: 0,
+          valuation_lt: 0,
+        },
+        search_term: userQuery,
+      };
+    }
   }
 
   async search(intent: any) {

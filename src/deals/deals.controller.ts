@@ -224,4 +224,39 @@ export class DealsController {
       );
     }
   }
+
+  @Get(':companyName/termsheet')
+  async getTermSheet(@Param('companyName') companyName: string) {
+    try {
+      const termSheet = await this.dealsService.getTermSheet(companyName);
+
+      if (!termSheet) {
+        throw new HttpException(
+          {
+            success: false,
+            error: 'Term sheet not found',
+            message: `No term sheet found for company: ${companyName}`,
+          },
+          HttpStatus.NOT_FOUND,
+        );
+      }
+
+      return {
+        success: true,
+        termSheet,
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          message: 'Failed to fetch term sheet',
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
 }

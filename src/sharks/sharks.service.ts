@@ -115,12 +115,13 @@ export class SharksService {
     try {
       const shark = this.sharks.find((s) => s.id === sharkId);
       if (!shark) {
+        this.logger.warn(`Shark not found: ${sharkId}`);
         return [];
       }
 
       this.logger.log(`Fetching deals for shark: ${shark.name}`);
 
-      // Search for deals by this shark
+      // Search for deals by this shark with a query to improve results
       const filter = {
         must: [
           {
@@ -134,7 +135,11 @@ export class SharksService {
         ],
       };
 
-      const results = await this.vectorStoreService.search('', filter, limit * 2);
+      // Use a search query to get better results
+      const searchQuery = `${shark.name} investment deal`;
+      const results = await this.vectorStoreService.search(searchQuery, filter, limit * 3);
+
+      this.logger.log(`Found ${results.length} results for ${shark.name}`);
 
       // Deduplicate by company
       const uniqueDeals = new Map<string, any>();
@@ -149,9 +154,11 @@ export class SharksService {
         .slice(0, limit)
         .map((payload) => this.mapPayloadToSharkDeal(payload));
 
+      this.logger.log(`Returning ${deals.length} unique deals for ${shark.name}`);
+
       return deals;
     } catch (error) {
-      this.logger.error(`Error fetching deals for shark ${sharkId}:`, error);
+      this.logger.error(`Error fetching deals for shark ${sharkId}:`, error.message);
       return [];
     }
   }

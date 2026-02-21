@@ -7,123 +7,181 @@ import * as crypto from 'crypto';
 export class VectorStoreService implements OnModuleInit {
   private client: QdrantClient;
   private readonly COLLECTION_NAME = 'shark_tank_pitches';
+  private readonly VECTOR_SIZE = 1024; // mxbai-embed-large output dimension
+  private readonly EMBEDDING_MODEL = 'mxbai-embed-large';
+  private readonly OLLAMA_URL = 'http://localhost:11434';
   private readonly logger = new Logger(VectorStoreService.name);
 
+  /** Resolves once the Qdrant collection and indexes are fully ready. */
+  readonly collectionReady: Promise<void>;
+  private resolveCollectionReady!: () => void;
+  private rejectCollectionReady!: (err: unknown) => void;
+
   constructor(private readonly configService: ConfigService) {
+    // Set up the ready-promise BEFORE any async work so consumers can await it immediately.
+    this.collectionReady = new Promise<void>((resolve, reject) => {
+      this.resolveCollectionReady = resolve;
+      this.rejectCollectionReady = reject;
+    });
+
+    const qdrantUrl = this.configService.get<string>('qdrant.url') ?? '';
+    const qdrantApiKey = this.configService.get<string>('qdrant.apiKey');
+
+    // Qdrant cloud runs on HTTPS (port 443). The client defaults to port 6333
+    // (local), so we must override it explicitly for cloud instances.
+    const isHttps = qdrantUrl.startsWith('https://');
     this.client = new QdrantClient({
-      url: this.configService.get<string>('qdrant.url'),
-      apiKey: this.configService.get<string>('qdrant.apiKey'),
+      url: qdrantUrl,
+      apiKey: qdrantApiKey,
+      ...(isHttps ? { port: 443 } : {}),
+      checkCompatibility: false,
     });
   }
 
   async onModuleInit() {
     try {
-      const collections = await this.client.getCollections();
-      const exists = collections.collections.some(
-        (c) => c.name === this.COLLECTION_NAME,
-      );
-
-      if (!exists) {
-        this.logger.log(`Creating collection: ${this.COLLECTION_NAME}`);
-        await this.client.createCollection(this.COLLECTION_NAME, {
-          vectors: {
-            size: 4, // Mock embedding size
-            distance: 'Cosine',
-          },
-        });
-      } else {
-        this.logger.log(`Collection ${this.COLLECTION_NAME} already exists`);
-      }
-
-      // Always ensure indexes exist (safe to call even if they already exist)
+      await this.ensureCollection();
       await this.ensureIndexes();
+      this.resolveCollectionReady();
     } catch (error) {
       this.logger.error('Failed to initialize Qdrant collection', error);
+      this.rejectCollectionReady(error);
     }
   }
+
+  // ─── Collection Management ────────────────────────────────────────────────
+
+  private async ensureCollection() {
+    const collections = await this.client.getCollections();
+    const existing = collections.collections.find(
+      (c) => c.name === this.COLLECTION_NAME,
+    );
+
+    if (existing) {
+      // Fetch collection info to check vector size
+      const info = await this.client.getCollection(this.COLLECTION_NAME);
+      const currentSize = (info.config?.params?.vectors as any)?.size;
+
+      if (currentSize !== this.VECTOR_SIZE) {
+        this.logger.warn(
+          `Collection has vector size ${currentSize}, expected ${this.VECTOR_SIZE}. Recreating…`,
+        );
+        await this.client.deleteCollection(this.COLLECTION_NAME);
+        await this.createCollection();
+      } else {
+        this.logger.log(`Collection "${this.COLLECTION_NAME}" is ready`);
+      }
+    } else {
+      await this.createCollection();
+    }
+  }
+
+  private async createCollection() {
+    this.logger.log(
+      `Creating collection "${this.COLLECTION_NAME}" (${this.VECTOR_SIZE} dims, Cosine)`,
+    );
+    await this.client.createCollection(this.COLLECTION_NAME, {
+      vectors: {
+        size: this.VECTOR_SIZE,
+        distance: 'Cosine',
+      },
+    });
+  }
+
+  // ─── Payload Indexes ──────────────────────────────────────────────────────
 
   private async ensureIndexes() {
+    this.logger.log('Ensuring payload indexes…');
+
+    const keywordFields = [
+      'investor_name',
+      'industry',
+      'company',
+      'entrepreneur',
+      'company_name',
+      'tags',
+      'season_context',
+      'chunk_type',
+      'task_id',
+      'video_url',
+    ];
+
+    const boolFields = ['deal_made', 'outcome_success'];
+    const floatFields = [
+      'ask_amount',
+      'equity_offered',
+      'valuation',
+      'implied_valuation',
+    ];
+
+    for (const field of keywordFields) {
+      await this.safeCreateIndex(field, 'keyword');
+    }
+    for (const field of boolFields) {
+      await this.safeCreateIndex(field, 'bool');
+    }
+    for (const field of floatFields) {
+      await this.safeCreateIndex(field, 'float');
+    }
+
+    this.logger.log('All payload indexes ensured');
+  }
+
+  private async safeCreateIndex(field: string, schema: string) {
     try {
-      this.logger.log('Ensuring indexes for filterable fields...');
-
-      // String fields (keyword index)
-      const stringFields = [
-        'investor_name',
-        'industry',
-        'company',
-        'entrepreneur',
-      ];
-
-      for (const field of stringFields) {
-        try {
-          await this.client.createPayloadIndex(this.COLLECTION_NAME, {
-            field_name: field,
-            field_schema: 'keyword',
-          });
-          this.logger.log(`Created index for ${field}`);
-        } catch (error) {
-          // Index might already exist, that's okay
-          if (!error.message?.includes('already exists')) {
-            this.logger.warn(`Could not create index for ${field}:`, error.message);
-          }
-        }
-      }
-
-      // Boolean field
-      try {
-        await this.client.createPayloadIndex(this.COLLECTION_NAME, {
-          field_name: 'deal_made',
-          field_schema: 'bool',
-        });
-        this.logger.log('Created index for deal_made');
-      } catch (error) {
-        if (!error.message?.includes('already exists')) {
-          this.logger.warn('Could not create index for deal_made:', error.message);
-        }
-      }
-
-      // Integer fields
-      const integerFields = ['season', 'episode'];
-      for (const field of integerFields) {
-        try {
-          await this.client.createPayloadIndex(this.COLLECTION_NAME, {
-            field_name: field,
-            field_schema: 'integer',
-          });
-          this.logger.log(`Created index for ${field}`);
-        } catch (error) {
-          if (!error.message?.includes('already exists')) {
-            this.logger.warn(`Could not create index for ${field}:`, error.message);
-          }
-        }
-      }
-
-      // Float/Number fields
-      const floatFields = ['valuation', 'ask_amount', 'equity_offered'];
-      for (const field of floatFields) {
-        try {
-          await this.client.createPayloadIndex(this.COLLECTION_NAME, {
-            field_name: field,
-            field_schema: 'float',
-          });
-          this.logger.log(`Created index for ${field}`);
-        } catch (error) {
-          if (!error.message?.includes('already exists')) {
-            this.logger.warn(`Could not create index for ${field}:`, error.message);
-          }
-        }
-      }
-
-      this.logger.log('All indexes ensured successfully');
+      await this.client.createPayloadIndex(this.COLLECTION_NAME, {
+        field_name: field,
+        field_schema: schema as any,
+      });
     } catch (error) {
-      this.logger.error('Failed to ensure indexes', error);
+      if (!error.message?.includes('already exists')) {
+        this.logger.warn(
+          `Could not create index for "${field}": ${error.message}`,
+        );
+      }
     }
   }
 
-  // Public method to manually trigger index setup
   async setupIndexes() {
     await this.ensureIndexes();
   }
+
+  // ─── Embedding ────────────────────────────────────────────────────────────
+
+  async getEmbeddings(text: string): Promise<number[]> {
+    if (!text || text.trim().length === 0) {
+      throw new Error('Cannot generate embeddings for empty text');
+    }
+
+    try {
+      const response = await fetch(`${this.OLLAMA_URL}/api/embed`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: this.EMBEDDING_MODEL,
+          input: text,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Ollama API error: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const embedding = data.embeddings?.[0] || data.embedding;
+      
+      if (!embedding || embedding.length === 0) {
+        throw new Error('Ollama returned empty embedding');
+      }
+      
+      return embedding;
+    } catch (error) {
+      this.logger.error(`Error generating embedding: ${error.message}`);
+      throw error;
+    }
+  }
+
+  // ─── Save / Search ────────────────────────────────────────────────────────
 
   async savePoint(
     metadata: any,
@@ -131,7 +189,7 @@ export class VectorStoreService implements OnModuleInit {
     chunkText: string,
     videoUrl: string,
   ) {
-    const embedding = this.getEmbeddings(chunkText);
+    const embedding = await this.getEmbeddings(chunkText);
     const pointId = crypto.randomUUID();
 
     await this.client.upsert(this.COLLECTION_NAME, {
@@ -153,9 +211,13 @@ export class VectorStoreService implements OnModuleInit {
   }
 
   async search(queryText: string, filter?: any, limit: number = 5) {
-    const vector = this.getEmbeddings(queryText);
+    // If no query text, use a generic query for browsing
+    const searchText = queryText && queryText.trim().length > 0 
+      ? queryText 
+      : 'shark tank pitch deal';
+    
+    const vector = await this.getEmbeddings(searchText);
 
-    // Basic search payload
     const searchParams: any = {
       vector,
       limit,
@@ -167,10 +229,5 @@ export class VectorStoreService implements OnModuleInit {
     }
 
     return await this.client.search(this.COLLECTION_NAME, searchParams);
-  }
-
-  getEmbeddings(text: string): number[] {
-    // Mock embedding generation: Random vector of size 4
-    return Array.from({ length: 4 }, () => Math.random());
   }
 }

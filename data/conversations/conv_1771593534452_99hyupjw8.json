@@ -1,0 +1,85 @@
+{
+  "id": "conv_1771593534452_99hyupjw8",
+  "title": "hi",
+  "messages": [
+    {
+      "role": "user",
+      "content": "hi",
+      "timestamp": "2026-02-20T13:18:54.455Z"
+    },
+    {
+      "role": "assistant",
+      "content": "Hi there! It looks like you’re diving into some interesting *Shark Tank* pitches. Here are a few standout ones from your search results:\n\n1. **Rebel Cheese** – A high-end vegan creamery using cave-aging techniques for plant-based cheeses. They asked for $750,000 for 5% equity.\n2. **The Cutting Board with a Tray** – A specialty cutting board designed by a firefighter’s family. They secured a deal with *all five Sharks* for $100,000 for 20% equity, with profits going to charity!\n3. **Nourish + Bloom Market** – An AI-powered autonomous grocery store for food deserts. The pitch was called \"hellishly complicated\" by the entrepreneurs.\n4. **Flora** – A smart plant-care system with a sensor and app. They struck a deal with Lori Greiner for $300,000 for 15% equity plus royalties.\n5. **MinusCal** – A health snack bar claiming to block fat absorption. They asked for $500,000 for 20% equity but didn’t get a deal.\n\nWhich one intrigues you the most? I can dive deeper into any of these—just let me know!",
+      "timestamp": "2026-02-20T13:19:02.818Z",
+      "metadata": {
+        "entities": {
+          "companies": [
+            "The pitch",
+            "They secured a",
+            "The",
+            "by the",
+            "They struck a",
+            "t get a"
+          ],
+          "sharks": [
+            "Lori Greiner"
+          ],
+          "deals": []
+        },
+        "processingTime": 8362
+      }
+    },
+    {
+      "role": "user",
+      "content": "give me the most frequent mistake that pitchers do",
+      "timestamp": "2026-02-20T13:19:57.584Z"
+    },
+    {
+      "role": "assistant",
+      "content": "I apologize, but I encountered an error processing your request. Please try again.",
+      "timestamp": "2026-02-20T13:20:00.734Z",
+      "metadata": {
+        "entities": {
+          "companies": [],
+          "sharks": [],
+          "deals": []
+        },
+        "processingTime": 3148
+      }
+    },
+    {
+      "role": "user",
+      "content": "give me the most frequent mistake that pitchers do",
+      "timestamp": "2026-02-20T13:22:23.693Z"
+    },
+    {
+      "role": "assistant",
+      "content": "I apologize, but I encountered an error processing your request. Please try again.",
+      "timestamp": "2026-02-20T13:22:26.975Z",
+      "metadata": {
+        "entities": {
+          "companies": [],
+          "sharks": [],
+          "deals": []
+        },
+        "processingTime": 3279
+      }
+    }
+  ],
+  "createdAt": "2026-02-20T13:18:54.452Z",
+  "updatedAt": "2026-02-20T13:22:26.976Z",
+  "metadata": {
+    "totalMessages": 6,
+    "companiesMentioned": [
+      "The pitch",
+      "They secured a",
+      "The",
+      "by the",
+      "They struck a",
+      "t get a"
+    ],
+    "sharksMentioned": [
+      "Lori Greiner"
+    ]
+  }
+}

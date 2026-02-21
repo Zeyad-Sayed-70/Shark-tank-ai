@@ -1,0 +1,59 @@
+{
+  "id": "conv_1771556263699_xjbp8qbt1",
+  "title": "HI",
+  "messages": [
+    {
+      "role": "user",
+      "content": "HI",
+      "timestamp": "2026-02-20T02:57:43.702Z"
+    },
+    {
+      "role": "assistant",
+      "content": "It looks like your message just said \"HI,\" but based on the search results, I found some fun and interesting pitches from *Shark Tank* that you might enjoy learning about! Here’s a quick highlight of what came up:\n\n1. **Hello Prenup** – A digital platform for creating prenuptial agreements quickly and affordably. They asked for $150,000 for 10% equity.\n2. **PaddleSmash** – A portable outdoor game mixing Pickleball and Spikeball. They asked for $250,000 for 10% equity.\n3. **SorSoap** – A soap and scraping tool for muscle recovery, designed for use in the shower. They asked for $100,000 for 10% equity.\n4. **BusyBox** – A smart sign for remote workers to signal their availability. They asked for $200,000 for 15% equity.\n\nWould you like to know more about any of these companies, their pitches, or the deals they made (or didn’t make) on the show? Let me know!",
+      "timestamp": "2026-02-20T02:58:55.079Z",
+      "metadata": {
+        "entities": {
+          "companies": [
+            "HI,",
+            "I found some fun and interesting",
+            "their",
+            "or the"
+          ],
+          "sharks": [],
+          "deals": []
+        },
+        "processingTime": 71376
+      }
+    },
+    {
+      "role": "user",
+      "content": "GIMME SOME Kevin O'Leary DEALS AND WHY HE AGREED THEM",
+      "timestamp": "2026-02-20T03:02:55.407Z"
+    },
+    {
+      "role": "assistant",
+      "content": "I apologize, but I encountered an error processing your request. Please try again.",
+      "timestamp": "2026-02-20T03:04:03.032Z",
+      "metadata": {
+        "entities": {
+          "companies": [],
+          "sharks": [],
+          "deals": []
+        },
+        "processingTime": 67612
+      }
+    }
+  ],
+  "createdAt": "2026-02-20T02:57:43.699Z",
+  "updatedAt": "2026-02-20T03:04:03.032Z",
+  "metadata": {
+    "totalMessages": 4,
+    "companiesMentioned": [
+      "HI,",
+      "I found some fun and interesting",
+      "their",
+      "or the"
+    ],
+    "sharksMentioned": []
+  }
+}

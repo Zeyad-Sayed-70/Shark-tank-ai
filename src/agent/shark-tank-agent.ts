@@ -67,41 +67,63 @@ Be conversational and educational, but ALWAYS base your answers on database sear
     const hasToolResult = lastMessage.additional_kwargs?.tool_result;
     const toolExecuted = lastMessage.additional_kwargs?.tool_executed;
     
-    // Build conversation text
-    let conversationText = '';
-    let isFirstUserMessage = true;
+    // Build conversation history for Mistral API
+    const conversationHistory: Array<any> = [];
+    let currentPrompt = '';
+    let toolResults = '';
     
     for (const msg of messages) {
       if (msg instanceof HumanMessage) {
-        if (isFirstUserMessage) {
-          conversationText += `Context: ${this.systemPrompt}\n\nUser: ${msg.content}\n\n`;
-          isFirstUserMessage = false;
-        } else {
-          conversationText += `User: ${msg.content}\n\n`;
-        }
+        const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+        // User message format (with prefix field)
+        conversationHistory.push({
+          object: 'entry',
+          type: 'message.input',
+          role: 'user',
+          content: content,
+          prefix: false,
+        });
       } else if (msg instanceof AIMessage) {
-        const content = msg.content as string;
-        if (content && content.trim()) {
-          conversationText += `Assistant: ${content}\n\n`;
-        }
-        // If this message has tool results, include them
+        const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+        
+        // If this message has tool results, store them separately
         if (msg.additional_kwargs?.tool_result && msg.additional_kwargs?.tool_executed) {
-          const toolResult = msg.additional_kwargs.tool_result;
-          conversationText += `Search Results: ${toolResult}\n\n`;
+          toolResults = typeof msg.additional_kwargs.tool_result === 'string' 
+            ? msg.additional_kwargs.tool_result 
+            : JSON.stringify(msg.additional_kwargs.tool_result);
+        } else if (content && content.trim() && !msg.additional_kwargs?.tool_calls) {
+          // Only add actual assistant responses (not tool calls)
+          // Assistant message format (no prefix field)
+          conversationHistory.push({
+            object: 'entry',
+            type: 'message.output',
+            model: 'mistral-large-latest',
+            role: 'assistant',
+            content: content,
+          });
         }
       }
     }
     
     // If we just got a tool result, generate final response (ALWAYS, even if empty/error)
     if (hasToolResult && toolExecuted) {
-      conversationText += `Using the search results above (even if empty or error), provide a helpful answer to the user's question. If no results were found, explain that and provide general knowledge if you have it. Do not repeat the context or search results - just provide the answer directly.\n\nAssistant:`;
+      // Get the last user message
+      const lastUserMessage = conversationHistory
+        .filter(msg => msg.role === 'user')
+        .pop()?.content || '';
+      
+      // Build prompt with tool results
+      currentPrompt = toolResults 
+        ? `Based on these search results:\n\n${toolResults}\n\nAnswer the user's question: ${lastUserMessage}`
+        : `The search returned no results. Please answer the user's question using your general knowledge: ${lastUserMessage}`;
       
       console.log('Tool result received, generating final response...');
       
-      // Generate response from AI
-      const aiEndpoint = this.configService.get<string>('ai.endpoint');
+      // Generate response from Mistral
+      const mistralEndpoint = this.configService.get<string>('mistral.endpoint');
+      const mistralCookie = this.configService.get<string>('mistral.cookie');
       
-      if (!aiEndpoint) {
+      if (!mistralEndpoint) {
         return {
           messages: [
             new AIMessage(
@@ -113,25 +135,64 @@ Be conversational and educational, but ALWAYS base your answers on database sear
       }
       
       try {
+        // CRITICAL FIX: Remove the last user message from history since we're including it in the prompt
+        // This prevents duplicate messages that cause 422 errors
+        let cleanHistory = conversationHistory.slice(0, -1);
+        
+        // Limit conversation history to last 4 turns (8 messages) to avoid payload size issues
+        const MAX_HISTORY_MESSAGES = 8;
+        if (cleanHistory.length > MAX_HISTORY_MESSAGES) {
+          cleanHistory = cleanHistory.slice(-MAX_HISTORY_MESSAGES);
+        }
+        
+        // Ensure all history entries have required fields and proper format
+        const validatedHistory = cleanHistory.filter(entry => {
+          return entry.content && 
+                 entry.content.trim().length > 0 && 
+                 entry.role && 
+                 (entry.role === 'user' || entry.role === 'assistant');
+        });
+        
+        console.log('Mistral API call with history:', {
+          historyLength: validatedHistory.length,
+          hasToolResults: !!toolResults,
+          promptLength: currentPrompt.length,
+        });
+
+        
+        // Build payload in exact order as the working example
+        const payload: any = {
+          prompt: currentPrompt,
+          instructions: this.systemPrompt,
+        };
+
+        
+        // Add parameters in exact order
+        payload.top_p = 1.0;
+        payload.temperature = 0.5;
+        payload.max_tokens = 8096;
+        payload.stream = false;
+        payload.model = 'mistral-large-latest';
+        
+        payload.reset_conversation = false;
+        payload.conversation_history = validatedHistory;
+        
+        // Add cookie if available (MUST be last)
+        if (mistralCookie) {
+          payload.cookie = mistralCookie;
+        }
+        
+        console.log('Mistral request payload:', JSON.stringify(payload, null, 2))
+        console.log('Mistral request - History items:', validatedHistory.length, 'Prompt length:', currentPrompt.length);
+        
         const response = await lastValueFrom(
-          this.httpService.post(aiEndpoint, {
-            prompt: conversationText,
-            stream: false,
-            model: 'gemini-3-flash-preview',
-            temperature: 0.7,
-            responseWithJson: false,
-            codeExecution: false,
-            googleSearch: false,
-            urlContext: false
-          }),
+          this.httpService.post(mistralEndpoint, payload),
         );
 
-        let aiResponse = response.data.response;
+        let aiResponse = response.data.content || response.data.response;
         
         // Clean up the response
         if (aiResponse) {
-          aiResponse = aiResponse.replace(/^Assistant:\s*/i, '');
-          aiResponse = aiResponse.replace(/^Context:.*?User:/s, '');
           aiResponse = aiResponse.trim();
         }
 
@@ -142,7 +203,11 @@ Be conversational and educational, but ALWAYS base your answers on database sear
           next: END,
         };
       } catch (error) {
-        console.error('AI API Error:', error.response?.data || error.message);
+        console.error('Mistral API Error:', {
+          message: error.message,
+          response: error.response?.data,
+          status: error.response?.status,
+        });
         return {
           messages: [
             new AIMessage(
@@ -187,11 +252,16 @@ Be conversational and educational, but ALWAYS base your answers on database sear
     }
 
     // Generate response without tools (shouldn't reach here normally)
-    conversationText += `Assistant:`;
+    const lastUserMessage = conversationHistory
+      .filter(msg => msg.role === 'user')
+      .pop()?.content || '';
     
-    const aiEndpoint = this.configService.get<string>('ai.endpoint');
+    currentPrompt = lastUserMessage;
     
-    if (!aiEndpoint) {
+    const mistralEndpoint = this.configService.get<string>('mistral.endpoint');
+    const mistralCookie = this.configService.get<string>('mistral.cookie');
+    
+    if (!mistralEndpoint) {
       return {
         messages: [
           new AIMessage(
@@ -203,25 +273,59 @@ Be conversational and educational, but ALWAYS base your answers on database sear
     }
     
     try {
+      // CRITICAL FIX: Remove the last user message from history since we're including it in the prompt
+      let cleanHistory = conversationHistory.slice(0, -1);
+      
+      // Limit conversation history to last 4 turns (8 messages) to avoid payload size issues
+      const MAX_HISTORY_MESSAGES = 8;
+      if (cleanHistory.length > MAX_HISTORY_MESSAGES) {
+        cleanHistory = cleanHistory.slice(-MAX_HISTORY_MESSAGES);
+      }
+      
+      // Ensure all history entries have required fields and proper format
+      const validatedHistory = cleanHistory.filter(entry => {
+        return entry.content && 
+               entry.content.trim().length > 0 && 
+               entry.role && 
+               (entry.role === 'user' || entry.role === 'assistant');
+      });
+      
+      console.log('Mistral API call (no tools):', {
+        historyLength: validatedHistory.length,
+        promptLength: currentPrompt.length,
+      });
+      
+      // Build payload in exact order as the working example
+      const payload: any = {
+        prompt: currentPrompt,
+        instructions: this.systemPrompt,
+      };
+
+      // Add parameters in exact order
+      payload.top_p = 1.0;
+      payload.temperature = 0.5;
+      payload.max_tokens = 8096;
+      payload.stream = false;
+      payload.model = 'mistral-large-latest';
+      
+      payload.reset_conversation = false;
+      payload.conversation_history = validatedHistory;
+
+      // Add cookie if available (MUST be last)
+      if (mistralCookie) {
+        payload.cookie = mistralCookie;
+      }
+
+      console.log('Mistral request - History items:', validatedHistory.length, 'Prompt length:', currentPrompt.length);
+      
       const response = await lastValueFrom(
-        this.httpService.post(aiEndpoint, {
-          prompt: conversationText,
-          stream: false,
-          model: 'gemini-3-flash-preview',
-          temperature: 0.7,
-          responseWithJson: false,
-          codeExecution: false,
-          googleSearch: false,
-          urlContext: false
-        }),
+        this.httpService.post(mistralEndpoint, payload),
       );
 
-      let aiResponse = response.data.response;
+      let aiResponse = response.data.content || response.data.response;
       
       // Clean up the response
       if (aiResponse) {
-        aiResponse = aiResponse.replace(/^Assistant:\s*/i, '');
-        aiResponse = aiResponse.replace(/^Context:.*?User:/s, '');
         aiResponse = aiResponse.trim();
       }
 
@@ -230,7 +334,11 @@ Be conversational and educational, but ALWAYS base your answers on database sear
         next: END,
       };
     } catch (error) {
-      console.error('AI API Error:', error.response?.data || error.message);
+      console.error('Mistral API Error:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
       return {
         messages: [
           new AIMessage(

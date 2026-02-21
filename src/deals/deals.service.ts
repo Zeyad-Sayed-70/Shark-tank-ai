@@ -22,7 +22,8 @@ export class DealsService {
         ],
       };
 
-      const results = await this.vectorStoreService.search(companyName, filter, 1);
+      // Use company name as search query for better results
+      const results = await this.vectorStoreService.search(companyName, filter, 5);
 
       if (results.length === 0) {
         this.logger.warn(`No deal found for company: ${companyName}`);
@@ -30,9 +31,10 @@ export class DealsService {
       }
 
       const payload = results[0].payload;
+      this.logger.log(`Found deal for ${companyName}`);
       return this.mapPayloadToDeal(payload);
     } catch (error) {
-      this.logger.error(`Error fetching deal for ${companyName}:`, error);
+      this.logger.error(`Error fetching deal for ${companyName}:`, error.message);
       throw error;
     }
   }
@@ -41,8 +43,14 @@ export class DealsService {
     try {
       this.logger.log(`Fetching ${limit} recent deals`);
 
-      // Get recent deals without specific filters
-      const results = await this.vectorStoreService.search('', undefined, limit * 2);
+      // Get recent deals with a search query
+      const results = await this.vectorStoreService.search(
+        'shark tank pitch deal investment',
+        undefined,
+        limit * 3,
+      );
+
+      this.logger.log(`Found ${results.length} results for recent deals`);
 
       // Deduplicate by company name
       const uniqueDeals = new Map<string, any>();
@@ -57,9 +65,11 @@ export class DealsService {
         .slice(0, limit)
         .map((payload) => this.mapPayloadToDeal(payload));
 
+      this.logger.log(`Returning ${deals.length} recent deals`);
+
       return deals;
     } catch (error) {
-      this.logger.error('Error fetching recent deals:', error);
+      this.logger.error('Error fetching recent deals:', error.message);
       throw error;
     }
   }
@@ -263,6 +273,49 @@ export class DealsService {
     }
 
     return must.length > 0 ? { must } : undefined;
+  }
+
+  async getTermSheet(companyName: string): Promise<any> {
+    try {
+      this.logger.log(`Fetching term sheet for company: ${companyName}`);
+
+      // Get the deal first
+      const deal = await this.getDealByCompany(companyName);
+
+      if (!deal) {
+        return null;
+      }
+
+      // Build term sheet from deal data
+      const termSheet = {
+        company: deal.company,
+        entrepreneur: deal.entrepreneur,
+        season: deal.season,
+        episode: deal.episode,
+        industry: deal.industry,
+        originalAsk: {
+          amount: deal.askAmount,
+          equity: deal.askEquity,
+          valuation: deal.valuation,
+        },
+        finalDeal: deal.dealMade ? {
+          amount: deal.dealAmount,
+          equity: deal.dealEquity,
+          valuation: deal.dealAmount && deal.dealEquity 
+            ? Math.round((deal.dealAmount / deal.dealEquity) * 100)
+            : deal.valuation,
+          investors: deal.investors,
+        } : null,
+        dealMade: deal.dealMade,
+        summary: deal.pitchSummary,
+        description: deal.description,
+      };
+
+      return termSheet;
+    } catch (error) {
+      this.logger.error(`Error fetching term sheet for ${companyName}:`, error);
+      throw error;
+    }
   }
 
   private mapPayloadToDeal(payload: any): DealDto {
