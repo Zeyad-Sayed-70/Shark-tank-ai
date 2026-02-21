@@ -37,7 +37,7 @@ import { TaskEmbedderModule } from './task-embedder/task-embedder.module';
     AgentModule,
     DealsModule,
     SharksModule,
-    TaskEmbedderModule,
+    // TaskEmbedderModule,
   ],
   controllers: [AppController],
   providers: [AppService],
